@@ -13,3 +13,7 @@ TODO (random order):
 -add unit testing  
 -add a demo class to try stuff without a tso account  
 -tidy up the code  
+
+Usage:  
+```mvn package```  
+creates a jar package  
