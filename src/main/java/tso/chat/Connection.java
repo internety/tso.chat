@@ -33,16 +33,19 @@ import java.util.regex.Pattern;
 import static org.apache.http.HttpStatus.SC_OK;
 
 /**
- * Created by reax on 27.04.17.
+ * This class provides chat connection and message exchange services.
+ *
  */
 public class Connection {
 
-    private String GAME_SITE_HTTPS = "https://www.thesettlersonline.ru";
-    private String GAME_SITE = "www.thesettlersonline.ru";
-    private String MAIN_PAGE = "/ru/главная-страница";
-    private String LOGIN_PATH = "/ru//api/user/login?name=%s&password=%s&rememberUser=on";
-    private String BIND_PATH_HTTP = "http://w03chat01.thesettlersonline.ru/http-bind/";
-    private String BIND_PATH = "w03chat01.thesettlersonline.ru/http-bind/";
+    // sites are hardcoded for now, because getting them from the server involves action-message format
+
+    private String gameSiteHttps = "https://www.thesettlersonline.ru";
+    private String gameSite = "www.thesettlersonline.ru";
+    private String mainPage = "/ru/главная-страница";
+    private String loginPath = "/ru//api/user/login?name=%s&password=%s&rememberUser=on";
+    private String bindPathHttp = "http://w03chat01.thesettlersonline.ru/http-bind/";
+    private String bindPath = "w03chat01.thesettlersonline.ru/http-bind/";
 
 
     private CloseableHttpClient httpclient = HttpClients.createDefault();
@@ -51,12 +54,11 @@ public class Connection {
     private Localization localization = LocalizationFactory.getLocalizationInstance("English");
     private ArrayBlockingQueue<SentMessage> messages = new ArrayBlockingQueue<>(10);
     private XMLHelper xmlHelper = new XMLHelper();
+    private volatile HttpPost hPost;
 
     public Connection(String email, String password) {
         this.session = new Session(email, password);
     }
-
-
 
     public String connect(SimpleStringProperty stage) {
         stage.set(localization.getLocalizedFor("login"));
@@ -70,14 +72,78 @@ public class Connection {
         return name;
     }
 
-    public void sendMessage(SentMessage message) {
-        messages.add(message);
-        postt.abort();
+    public Map<String, String> getFriendsAndStatusFromServer() {
+        String path = bindPathHttp;
+        String body = xmlHelper.prepareGetFriendsBody(session.sid, session.nextRid());
+        String response = helper(path, body);
+        List<String> friends = xmlHelper.extractFriendsFromResponse(response);
+
+        body = xmlHelper.prepareDummyBody(session.sid, session.nextRid());
+        helper(path, body);
+
+        body = xmlHelper.prepareDummyBody(session.sid, session.nextRid());
+        String statusBody = helper(path, body);
+        List<String> onlineFriends = xmlHelper.whoIsOnline(statusBody);
+        Map<String, String> friendsWithStatus = new TreeMap<>();
+
+        for (String friend : friends) {
+            friendsWithStatus.put(friend, "offline");
+        }
+
+        for (String onlineFriend : onlineFriends) {
+            friendsWithStatus.put(onlineFriend, "online");
+        }
+        return friendsWithStatus;
     }
 
+    public List<ChatMessage> bindChat(String chatName) {
+        String path = bindPathHttp;
+        String body = xmlHelper.prepareBindChatBody(session.sid, session.nextRid(), chatName, session.name);
+        helper(path, body);
+
+        body = xmlHelper.prepareDummyBody(session.sid, session.nextRid());
+        String history = helper(path, body);
+        return xmlHelper.extractHistory(history);
+    }
+
+    public ChatMessage chatLoop() {
+        String path = bindPathHttp;
+        while (true) {
+            String response = "";
+            try {
+                String body;
+                if (!messages.isEmpty()) {
+                    SentMessage message = messages.take();
+                    body = xmlHelper.prepareMessageBody(message, session);
+                } else {
+                    body = xmlHelper.prepareChatBody(session.sid, session.nextRid());
+                }
+                response = helper(path, body);
+                if ("<body xmlns=\"http://jabber.org/protocol/httpbind\"></body>".equals(response)) {
+                    continue;
+                }
+                if (response.contains("<presence")) {
+                    int from = response.indexOf("from=");
+                    String further = response.substring(from + 6);
+                    String name = further.substring(0, further.indexOf("@"));
+                    System.out.println(name + " is online or offline");
+                    continue;
+                }
+                return xmlHelper.extractMessage(response);
+            } catch (Exception e) {
+                // not all responses are handled now, ignoring some of them helps to test other things
+                // print response body is ok here
+            }
+        }
+    }
+
+    public void sendMessage(SentMessage message) {
+        messages.add(message);
+        hPost.abort();
+    }
 
     protected void login() {
-        String path = String.format(GAME_SITE_HTTPS + LOGIN_PATH, session.email, session.password);
+        String path = String.format(gameSiteHttps + loginPath, session.email, session.password);
         HttpPost httpPost = new HttpPost(path);
         CloseableHttpResponse response = connectionHelper.doPost(httpPost);
         try {
@@ -110,7 +176,7 @@ public class Connection {
     }
 
     protected void checkIn() {
-        String path = GAME_SITE_HTTPS + MAIN_PAGE;
+        String path = gameSiteHttps + mainPage;
         HttpGet httpGet = new HttpGet(path);
         CloseableHttpResponse response = connectionHelper.doGet(httpGet);
         Header[] cookies = response.getHeaders("Set-Cookie");
@@ -155,7 +221,7 @@ public class Connection {
     }
 
     protected void bind() {
-        String path = BIND_PATH_HTTP;
+        String path = bindPathHttp;
         HttpPost httpPost = new HttpPost(path);
         String body = xmlHelper.prepareFirstBindBody(session.nextRid());
         HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
@@ -165,13 +231,13 @@ public class Connection {
             String result = EntityUtils.toString(response.getEntity());
             session.sid= xmlHelper.extractSid(result);
         } catch (IOException e) {
-
+            throw new RuntimeException(e);
         }
         close(response);
     }
 
     protected void bind2() {
-        String path = BIND_PATH_HTTP;
+        String path = bindPathHttp;
         HttpPost httpPost = new HttpPost(path);
         String authToken = session.name + "@null\0" + session.name + "\0" + session.authToken + "\0null";
         String base64Token = Base64.getEncoder().encodeToString(authToken.getBytes());
@@ -183,7 +249,7 @@ public class Connection {
     }
 
     protected void bind3() {
-        String path = BIND_PATH_HTTP;
+        String path = bindPathHttp;
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\"" + session.nextRid()
                 + "\" xmpp:restart=\"true\" xmlns=\"http://jabber.org/protocol/httpbind\" " +
@@ -195,7 +261,7 @@ public class Connection {
     }
 
     protected void bind4() {
-        String path = BIND_PATH_HTTP;
+        String path = bindPathHttp;
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\""+session.nextRid()+"\" " +
                 "xmlns=\"http://jabber.org/protocol/httpbind\"><iq type=\"set\" " +
@@ -208,7 +274,7 @@ public class Connection {
     }
 
     protected void bind5() {
-        String path = BIND_PATH_HTTP;
+        String path = bindPathHttp;
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\""+session.nextRid()+"\" " +
                 "xmlns=\"http://jabber.org/protocol/httpbind\"><iq type=\"set\" " +
@@ -219,76 +285,10 @@ public class Connection {
         close(response);
     }
 
-    public List<ChatMessage> bindChat(String chatName) {
-        String path = BIND_PATH_HTTP;
-        String body = xmlHelper.prepareBindChatBody(session.sid, session.nextRid(), chatName, session.name);
-        helper(path, body);
-
-        body = xmlHelper.prepareDummyBody(session.sid, session.nextRid());
-        String history = helper(path, body);
-        List<ChatMessage> chatHistory = xmlHelper.extractHistory(history);
-
-        return chatHistory;
-    }
-
-    public Map<String, String> getFriendsAndStatusFromServer() {
-        String path = BIND_PATH_HTTP;
-        String body = xmlHelper.prepareGetFriendsBody(session.sid, session.nextRid());
-        String response = helper(path, body);
-        List<String> friends = xmlHelper.extractFriendsFromResponse(response);
-
-        body = xmlHelper.prepareDummyBody(session.sid, session.nextRid());
-        helper(path, body);
-
-        body = xmlHelper.prepareDummyBody(session.sid, session.nextRid());
-        String statusBody = helper(path, body);
-        List<String> onlineFriends = xmlHelper.whoIsOnline(statusBody);
-        Map<String, String> friendsWithStatus = new TreeMap<>();
-
-        for (String friend : friends) {
-            friendsWithStatus.put(friend, "offline");
-        }
-
-        for (String onlineFriend : onlineFriends) {
-            friendsWithStatus.put(onlineFriend, "online");
-        }
-        return friendsWithStatus;
-    }
-
-        public ChatMessage chatLoop() {
-        String path = BIND_PATH_HTTP;
-        while (true) {
-            String response = "";
-            try {
-                String body;
-                if (!messages.isEmpty()) {
-                    SentMessage message = messages.take();
-                    body = xmlHelper.prepareMessageBody(message, session);
-                } else {
-                    body = xmlHelper.prepareChatBody(session.sid, session.nextRid());
-                }
-                response = helper(path, body);
-                if ("<body xmlns=\"http://jabber.org/protocol/httpbind\"></body>".equals(response)) {
-                    continue;
-                }
-                if (response.contains("<presence")) {
-                    int from = response.indexOf("from=");
-                    String further = response.substring(from + 6);
-                    String name = further.substring(0, further.indexOf("@"));
-                    System.out.println(name + " is online or offline");
-                    continue;
-                }
-                ChatMessage chatMessage = xmlHelper.extractMessage(response);
-                return chatMessage;
-            } catch (Exception e) {
-            }
-        }
-    }
-
-    private volatile HttpPost postt;
+    //TODO get rid of this helper method
     private String helper(String path, String body) {
         HttpPost httpPost = new HttpPost(path);
-        postt = httpPost;
+        hPost = httpPost;
         String result = "none";
         try {
             httpPost.setEntity(new ByteArrayEntity(body.getBytes("UTF-8")));
@@ -302,33 +302,30 @@ public class Connection {
     }
 
     private class XMLHelper {
+        private final SAXReader xmlReader = new SAXReader();
 
         private String extractSid(String body) {
             Pattern pattern = Pattern.compile("sid=\"(.*?)\"");
             Matcher m = pattern.matcher(body);
             m.find();
-            String sid = m.group(1);
-            return sid;
+            return m.group(1);
         }
 
         private String prepareFirstBindBody(int rid) {
-            String body = String.format("<body rid=\"%d\" xmlns:xmpp=\"urn:xmpp:xbosh\" " +
+            return String.format("<body rid=\"%d\" xmlns:xmpp=\"urn:xmpp:xbosh\" " +
                     "xmlns=\"http://jabber.org/protocol/httpbind\" " +
                     "secure=\"false\" wait=\"20\" hold=\"1\" xml:lang=\"en\" " +
-                    "xmpp:version=\"1.0\" to=\""+BIND_PATH+"\" ver=\"1.6\" />", rid);
-            return body;
+                    "xmpp:version=\"1.0\" to=\""+ bindPath +"\" ver=\"1.6\" />", rid);
         }
 
         private String prepareAuthBody(String sid, int rid, String authToken) {
-            String body = String.format("<body sid=\"%s\" rid=\"%d\" xmlns=\"http://jabber.org/protocol/httpbind\">" +
+            return String.format("<body sid=\"%s\" rid=\"%d\" xmlns=\"http://jabber.org/protocol/httpbind\">" +
                     "<auth xmlns=\"urn:ietf:params:xml:ns:xmpp-sasl\" mechanism=\"PLAIN\">%s</auth></body>", sid, rid, authToken);
-            return body;
         }
 
 
         private String prepareChatBody(String sid, int rid) {
-            String body = String.format("<body sid=\"%s\" rid=\"%d\" xmlns=\"http://jabber.org/protocol/httpbind\" />", sid, rid);
-            return body;
+            return String.format("<body sid=\"%s\" rid=\"%d\" xmlns=\"http://jabber.org/protocol/httpbind\" />", sid, rid);
         }
 
         private String prepareMessageBody(SentMessage message, Session session) {
@@ -350,31 +347,27 @@ public class Connection {
         }
 
         private String prepareBindChatBody(String sid, int rid, String chat, String name) {
-            String body = String.format("<body sid=\"%s\" rid=\"%d\" xmlns=\"http://jabber.org/protocol/httpbind\">" +
+            return String.format("<body sid=\"%s\" rid=\"%d\" xmlns=\"http://jabber.org/protocol/httpbind\">" +
                     "<presence to=\"%s@conference.%s/%s\">" +
-                    "<priority>0</priority><x xmlns=\"http://jabber.org/protocol/muc\" /></presence></body>", sid, rid, chat, BIND_PATH, name);
-            return body;
+                    "<priority>0</priority><x xmlns=\"http://jabber.org/protocol/muc\" /></presence></body>", sid, rid, chat, bindPath, name);
         }
 
         private String prepareDummyBody(String sid, int rid) {
-            String body = String.format("<body sid=\"%s\" rid=\"%d\" " +
+            return String.format("<body sid=\"%s\" rid=\"%d\" " +
                     "xmlns=\"http://jabber.org/protocol/httpbind\"><presence>" +
                     "<status>Online</status><priority>5</priority></presence></body>", sid, rid);
-            return body;
         }
 
         private String prepareGetFriendsBody(String sid, int rid) {
-            String body = String.format("<body sid=\"%s\" rid=\"%d\" xmlns=\"http://jabber.org/protocol/httpbind\">" +
+            return  String.format("<body sid=\"%s\" rid=\"%d\" xmlns=\"http://jabber.org/protocol/httpbind\">" +
                     "<iq type=\"get\" id=\"roster_5\"><query xmlns=\"jabber:iq:roster\" /></iq></body>", sid, rid);
-            return body;
         }
 
         private ChatMessage extractMessage(String body) {
             String cleanBody = destroyNamespaces(body); // getting rid of namespaces simplifies XML routine
-            SAXReader reader = new SAXReader();
             Document document = null;
             try {
-                document = reader.read(new StringReader(cleanBody));
+                document = xmlReader.read(new StringReader(cleanBody));
             } catch (Exception e) {
                 // we all love checked exceptions!
             }
@@ -425,16 +418,14 @@ public class Connection {
         private List<ChatMessage> extractHistory(String body) {
             List<ChatMessage> messages = new ArrayList<>();
             String cleanBody = destroyNamespaces(body); // getting rid of namespaces simplifies XML routine
-            SAXReader reader = new SAXReader();
             Document document = null;
             try {
-                document = reader.read(new StringReader(cleanBody));
+                document = xmlReader.read(new StringReader(cleanBody));
             } catch (Exception e) {
                 // we all love checked exceptions!
             }
             Element el = document.getRootElement();
             List<Node> nodes = el.selectNodes("message");
-
             for (Node node : nodes) {
                 ChatMessage chatMessage = extractMessage(node);
                 if (chatMessage==null) {
@@ -461,10 +452,9 @@ public class Connection {
         private List<String> extractFriendsFromResponse(String response) {
             List<String> friends = new ArrayList<>();
             String cleanResponse = destroyNamespaces(response);
-            SAXReader reader = new SAXReader();
             Document document = null;
             try {
-                document = reader.read(new StringReader(cleanResponse));
+                document = xmlReader.read(new StringReader(cleanResponse));
             } catch (Exception e) {
                 // we all love checked exceptions!
             }
@@ -484,10 +474,9 @@ public class Connection {
         private List<String> whoIsOnline(String response) {
             List<String> onlineFriends = new ArrayList<>();
             String cleanResponse = destroyNamespaces(response);
-            SAXReader reader = new SAXReader();
             Document document = null;
             try {
-                document = reader.read(new StringReader(cleanResponse));
+                document = xmlReader.read(new StringReader(cleanResponse));
             } catch (Exception e) {
                 // we all love checked exceptions!
             }
@@ -503,8 +492,7 @@ public class Connection {
         }
 
         private String destroyNamespaces(String body) {
-            String cleanBody = body.replaceAll("xmlns=[\"\'].+?[\"\']", "");
-            return cleanBody;
+            return body.replaceAll("xmlns=[\"\'].+?[\"\']", "");
         }
 
         private String getChatName(String fromString) {
@@ -528,8 +516,8 @@ public class Connection {
         int nextRid() {
             return rid.getAndIncrement();
         }
-        public
-        Session(String email, String password) {
+
+        private Session(String email, String password) {
             this.email=email;
             this.password=password;
         }
