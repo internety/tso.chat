@@ -7,7 +7,7 @@ import java.time.format.DateTimeFormatter;
 /**
  * Created by reax on 03.11.17.
  */
-public class ChatMessage {
+public class ChatMessage implements Message {
     private static final DateTimeFormatter TIME_FORMATTER = DateTimeFormatter.ofPattern("kk:mm:ss");
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd:MM:yyyy");
     private final String channel;

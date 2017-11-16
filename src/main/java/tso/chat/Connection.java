@@ -1,7 +1,6 @@
 package tso.chat;
 
 import javafx.beans.property.SimpleObjectProperty;
-import javafx.beans.property.SimpleStringProperty;
 import org.apache.http.Header;
 import org.apache.http.HeaderElement;
 import org.apache.http.HttpEntity;
@@ -58,11 +57,10 @@ public class Connection {
     private String bindPathHttp = "http://w03chat01.thesettlersonline.ru/http-bind/";
     private String bindPath = "w03chat01.thesettlersonline.ru/http-bind/";
 
-
-    private Session session;
-    private ArrayBlockingQueue<SentMessage> messages = new ArrayBlockingQueue<>(10);
-    private XMLHelper xmlHelper = new XMLHelper();
-    private volatile HttpPost hPost;
+    protected Session session;
+    protected ArrayBlockingQueue<SentMessage> messages = new ArrayBlockingQueue<>(10);
+    protected XMLHelper xmlHelper = new XMLHelper();
+    protected volatile HttpPost hPost;
 
     /**
      * @param email the email used to log in to Uplay
@@ -127,7 +125,7 @@ public class Connection {
 
     //TODO implement the restart procedure, hopefully without repeated login (no need to store password then)
     public void restart() {
-
+        bindAll();
     }
 
     /**
@@ -295,7 +293,8 @@ public class Connection {
         bind2();
         bind3();
         bind4();
-        bind5();
+        // it looks like bind5() is not needed
+     // bind5();
     }
 
     protected void bind() {
@@ -435,7 +434,7 @@ public class Connection {
             } else {
                 body = "<body rid=\""+session.nextRid()+"\" xmlns=\"http://jabber.org/protocol/httpbind\" sid=\""+session.sid+"\">" +
                         "<message to=\""+message.getChannel()+"@conference.w03chat01.thesettlersonline.ru\" id=\"m_73\" " +
-                        "from=\""+"xитрый_xаджит"+"@w03chat01.thesettlersonline.ru\" type=\"groupchat\"><body>.</body>" +
+                        "from=\""+session.name+"@w03chat01.thesettlersonline.ru\" type=\"groupchat\"><body>.</body>" +
                         "<bbmsg playerid=\""+session.userId+"\" playertag=\""+"null"+"\" playername=\""+session.name+"\" " +
                         "xmlns=\"bbmsg\" /></message></body>";
             }
