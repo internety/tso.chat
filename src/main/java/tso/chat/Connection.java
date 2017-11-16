@@ -1,5 +1,6 @@
 package tso.chat;
 
+import javafx.beans.property.SimpleObjectProperty;
 import javafx.beans.property.SimpleStringProperty;
 import org.apache.http.Header;
 import org.apache.http.HeaderElement;
@@ -44,6 +45,9 @@ import static org.apache.http.HttpStatus.SC_OK;
 
 public class Connection {
 
+    // one client per class to handle separate cookies
+    protected CloseableHttpClient httpclient = HttpClients.createDefault();
+
     // Sites are hardcoded for now, because getting them from the server involves action-message format
     // Two ways to deal with this are: hardcode all servers or add amf interaction
 
@@ -54,11 +58,8 @@ public class Connection {
     private String bindPathHttp = "http://w03chat01.thesettlersonline.ru/http-bind/";
     private String bindPath = "w03chat01.thesettlersonline.ru/http-bind/";
 
-    // one client per class to handle separate cookies
-    private CloseableHttpClient httpclient = HttpClients.createDefault();
-    private ConnectionHelper connectionHelper = new ConnectionHelperImpl();
+
     private Session session;
-    private Localization localization = LocalizationFactory.getLocalizationInstance("English");
     private ArrayBlockingQueue<SentMessage> messages = new ArrayBlockingQueue<>(10);
     private XMLHelper xmlHelper = new XMLHelper();
     private volatile HttpPost hPost;
@@ -81,22 +82,45 @@ public class Connection {
      *     bindAll();
      * </code>
      *
+     * @return the name of the player which is resolved at the authorization step
+     * @throws BadCredentialsException if the user entered incorrect email or password
+     * @throws UplayDownException if the uplay server is down at the login step
+     */
+    public String connect() {
+        login();
+        checkIn();
+        String name = receiveAuthHash();
+        bindAll();
+        return name;
+    }
+
+    /**
+     * This is a convenience method to deal with all connection steps. It allows you to track progress via the
+     * <i>stage</i> parameter.
+     * This method calls overridable methods in a predefined order:
+     * <code>
+     *     login();
+     *     checkIn();
+     *     receiveAuthHash();
+     *     bindAll();
+     * </code>
+     *
      * @param stage the object through which the stage of connection procedure can be communicated
      * @return the name of the player which is resolved at the authorization step
      * @throws BadCredentialsException if the user entered incorrect email or password
      * @throws UplayDownException if the uplay server is down at the login step
      */
-    public String connect(SimpleStringProperty stage) {
+    public String connect(SimpleObjectProperty<Stage> stage) {
         if (stage==null) {
-            stage = new SimpleStringProperty();
+            stage = new SimpleObjectProperty<>();
         }
-        stage.set(localization.getLocalizedFor("login"));
+        stage.set(Stage.LOGIN);
         login();
-        stage.set(localization.getLocalizedFor("check in"));
+        stage.set(Stage.CHECK_IN);
         checkIn();
-        stage.set(localization.getLocalizedFor("auth"));
+        stage.set(Stage.AUTH);
         String name = receiveAuthHash();
-        stage.set(localization.getLocalizedFor("bind"));
+        stage.set(Stage.BIND);
         bindAll();
         return name;
     }
@@ -199,7 +223,7 @@ public class Connection {
     protected void login() {
         String path = String.format(gameSiteHttps + loginPath, session.email, session.password);
         HttpPost httpPost = new HttpPost(path);
-        CloseableHttpResponse response = connectionHelper.doPost(httpPost);
+        CloseableHttpResponse response = doPost(httpPost);
         try {
             String responseBody = EntityUtils.toString(response.getEntity());
             int status = response.getStatusLine().getStatusCode();
@@ -232,7 +256,7 @@ public class Connection {
     protected void checkIn() {
         String path = gameSiteHttps + mainPage;
         HttpGet httpGet = new HttpGet(path);
-        CloseableHttpResponse response = connectionHelper.doGet(httpGet);
+        CloseableHttpResponse response = doGet(httpGet);
         Header[] cookies = response.getHeaders("Set-Cookie");
         for (Header h : cookies) {
             for (HeaderElement el : h.getElements()) {
@@ -253,7 +277,7 @@ public class Connection {
         String authText = String.format("DSOAUTHTOKEN=%s&DSOAUTHUSER=%s", session.authToken, session.userId);
         HttpEntity entity = new StringEntity(authText, ContentType.TEXT_HTML);
         httpPost.setEntity(entity);
-        CloseableHttpResponse response = connectionHelper.doPost(httpPost);
+        CloseableHttpResponse response = doPost(httpPost);
         try {
             String responseBody = EntityUtils.toString(response.getEntity(), "UTF-8");
             String[] tokens = responseBody.split("\\|");
@@ -280,7 +304,7 @@ public class Connection {
         String body = xmlHelper.prepareFirstBindBody(session.nextRid());
         HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
         httpPost.setEntity(entity);
-        CloseableHttpResponse response = connectionHelper.doPost(httpPost);
+        CloseableHttpResponse response = doPost(httpPost);
         try {
             String result = EntityUtils.toString(response.getEntity());
             session.sid= xmlHelper.extractSid(result);
@@ -298,7 +322,7 @@ public class Connection {
         String body = xmlHelper.prepareAuthBody(session.sid, session.nextRid(), base64Token);
         HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
         httpPost.setEntity(entity);
-        CloseableHttpResponse response = connectionHelper.doPost(httpPost);
+        CloseableHttpResponse response = doPost(httpPost);
         close(response);
     }
 
@@ -310,7 +334,7 @@ public class Connection {
                 "xml:lang=\"en\" to=\"w03chat01.thesettlersonline.ru\" xmlns:xmpp=\"urn:xmpp:xbosh\" />";
         HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
         httpPost.setEntity(entity);
-        CloseableHttpResponse response = connectionHelper.doPost(httpPost);
+        CloseableHttpResponse response = doPost(httpPost);
         close(response);
     }
 
@@ -323,7 +347,7 @@ public class Connection {
                 "</bind></iq></body>";
         HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
         httpPost.setEntity(entity);
-        CloseableHttpResponse response = connectionHelper.doPost(httpPost);
+        CloseableHttpResponse response = doPost(httpPost);
         close(response);
     }
 
@@ -335,7 +359,7 @@ public class Connection {
                 "id=\"iq_3\"><session xmlns=\"urn:ietf:params:xml:ns:xmpp-session\" /></iq></body>";
         HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
         httpPost.setEntity(entity);
-        CloseableHttpResponse response = connectionHelper.doPost(httpPost);
+        CloseableHttpResponse response = doPost(httpPost);
         close(response);
     }
 
@@ -353,6 +377,24 @@ public class Connection {
 
         }
         return result;
+    }
+
+    protected CloseableHttpResponse doGet(HttpGet httpGet) {
+        try {
+            CloseableHttpResponse response = httpclient.execute(httpGet);
+            return response;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    protected CloseableHttpResponse doPost(HttpPost httpPost) {
+        try {
+            CloseableHttpResponse response = httpclient.execute(httpPost);
+            return response;
+        } catch (Exception e) {
+            throw new RuntimeException(e);
+        }
     }
 
     private class XMLHelper {
