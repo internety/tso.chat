@@ -34,11 +34,18 @@ import static org.apache.http.HttpStatus.SC_OK;
 
 /**
  * This class provides chat connection and message exchange services.
+ * Most of the connection methods are not part of the API. Protected methods perform different connection steps and
+ * public methods call them in a predefined order.If you want to implement your own connection procedure then subclass.
+ *
+ * <p>
+ * Each user needs their own instance of Connection because they need a separate set of cookies
  *
  */
+
 public class Connection {
 
-    // sites are hardcoded for now, because getting them from the server involves action-message format
+    // Sites are hardcoded for now, because getting them from the server involves action-message format
+    // Two ways to deal with this are: hardcode all servers or add amf interaction
 
     private String gameSiteHttps = "https://www.thesettlersonline.ru";
     private String gameSite = "www.thesettlersonline.ru";
@@ -47,7 +54,7 @@ public class Connection {
     private String bindPathHttp = "http://w03chat01.thesettlersonline.ru/http-bind/";
     private String bindPath = "w03chat01.thesettlersonline.ru/http-bind/";
 
-
+    // one client per class to handle separate cookies
     private CloseableHttpClient httpclient = HttpClients.createDefault();
     private ConnectionHelper connectionHelper = new ConnectionHelperImpl();
     private Session session;
@@ -56,11 +63,33 @@ public class Connection {
     private XMLHelper xmlHelper = new XMLHelper();
     private volatile HttpPost hPost;
 
+    /**
+     * @param email the email used to log in to Uplay
+     * @param password the password of the Uplay account
+     */
     public Connection(String email, String password) {
         this.session = new Session(email, password);
     }
 
+    /**
+     * This is a convenience method to deal with all connection steps. It calls overridable methods in a predefined
+     * order:
+     * <code>
+     *     login();
+     *     checkIn();
+     *     receiveAuthHash();
+     *     bindAll();
+     * </code>
+     *
+     * @param stage the object through which the stage of connection procedure can be communicated
+     * @return the name of the player which is resolved at the authorization step
+     * @throws BadCredentialsException if the user entered incorrect email or password
+     * @throws UplayDownException if the uplay server is down at the login step
+     */
     public String connect(SimpleStringProperty stage) {
+        if (stage==null) {
+            stage = new SimpleStringProperty();
+        }
         stage.set(localization.getLocalizedFor("login"));
         login();
         stage.set(localization.getLocalizedFor("check in"));
@@ -72,6 +101,17 @@ public class Connection {
         return name;
     }
 
+    //TODO implement the restart procedure, hopefully without repeated login (no need to store password then)
+    public void restart() {
+
+    }
+
+    /**
+     * Retrieves the friend list from the chat server and their status: online or offline.
+     * Nicknames are in lower case even if their ingame names use uppercase letters. This is because chat server stores
+     * the names in lower case.
+     * @return map of pairs <i>String nickname : String status</i>. Status is either "online" or "offline"
+     */
     public Map<String, String> getFriendsAndStatusFromServer() {
         String path = bindPathHttp;
         String body = xmlHelper.prepareGetFriendsBody(session.sid, session.nextRid());
@@ -96,6 +136,12 @@ public class Connection {
         return friendsWithStatus;
     }
 
+    /**
+     * Binds a chat channel. Before you can use a chat channel you must bind it first. This method also returns
+     * chat history: up to 15 messages from that channel.
+     * @param chatName the name of the chat channel
+     * @return up to 15 messages of history from the channel
+     */
     public List<ChatMessage> bindChat(String chatName) {
         String path = bindPathHttp;
         String body = xmlHelper.prepareBindChatBody(session.sid, session.nextRid(), chatName, session.name);
@@ -106,6 +152,10 @@ public class Connection {
         return xmlHelper.extractHistory(history);
     }
 
+    /**
+     * Waits in a loop until a non-empty message from chat arrives.
+     * @return a message from chat. This can be text message or a status change of a friend.
+     */
     public ChatMessage chatLoop() {
         String path = bindPathHttp;
         while (true) {
@@ -137,6 +187,10 @@ public class Connection {
         }
     }
 
+    /**
+     * Sends a message to chat.
+     * @param message message to be sent to chat.
+     */
     public void sendMessage(SentMessage message) {
         messages.add(message);
         hPost.abort();
