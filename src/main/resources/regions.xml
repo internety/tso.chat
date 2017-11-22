@@ -1,0 +1,18 @@
+<regions>
+    <region name="Russia">
+        <domain>ru</domain>
+        <main_page>главная-страница</main_page>
+        <realm no="1">
+            <game></game>
+            <chat></chat>
+        </realm>
+        <realm no="2">
+            <game></game>
+            <chat></chat>
+        </realm>
+        <realm no="3">
+            <game>w03bb01</game>
+            <chat>w03chat01</chat>
+        </realm>
+    </region>
+</regions>
