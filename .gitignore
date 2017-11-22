@@ -26,5 +26,5 @@ hs_err_pid*
 .idea/
 target/
 tso-chat-connection.iml
-src/main/resources/
+# src/main/resources/
 src/test/
