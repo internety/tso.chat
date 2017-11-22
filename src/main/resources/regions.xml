@@ -1,18 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
 <regions>
     <region name="Russia">
         <domain>ru</domain>
         <main_page>главная-страница</main_page>
-        <realm no="1">
-            <game></game>
-            <chat></chat>
-        </realm>
-        <realm no="2">
-            <game></game>
-            <chat></chat>
-        </realm>
-        <realm no="3">
-            <game>w03bb01</game>
-            <chat>w03chat01</chat>
-        </realm>
+        <realms>
+            <realm no="1">
+                <bb>w01bb01</bb>
+                <chat>w01c01</chat>
+            </realm>
+            <realm no="2">
+                <bb>w02bb01</bb>
+                <chat>w02c01</chat>
+            </realm>
+            <realm no="3">
+                <bb>w03bb01</bb>
+                <chat>w03chat01</chat>
+            </realm>
+        </realms>
     </region>
 </regions>
