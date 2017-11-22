@@ -13,6 +13,19 @@
         <maven.compiler.target>1.8</maven.compiler.target>
     </properties>
 
+    <build>
+
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <includes>
+                    <include>regions.xml</include>
+                </includes>
+            </resource>
+        </resources>
+
+    </build>
+
     <dependencies>
         <dependency>
             <groupId>org.dom4j</groupId>

@@ -46,17 +46,18 @@ public class Connection {
 
     // one client per class to handle separate cookies
     protected CloseableHttpClient httpclient = HttpClients.createDefault();
+    private final RegionalDataHandler handler;
 
     // Sites are hardcoded for now, because getting them from the server involves action-message format
     // Two ways to deal with this are: hardcode all servers or add amf interaction
 
-    private String gameSiteHttps = "https://www.thesettlersonline.ru";
-    private String gameSite = "www.thesettlersonline.ru";
-    private String authPath = "http://w03bb01.thesettlersonline.ru/authenticate";
-    private String mainPage = "/ru/главная-страница";
-    private String loginPath = "/ru//api/user/login?name=%s&password=%s&rememberUser=on";
-    private String bindPathHttp = "http://w03chat01.thesettlersonline.ru/http-bind/";
-    private String bindPath = "w03chat01.thesettlersonline.ru/http-bind/";
+   // private String gameSiteHttps = "https://www.thesettlersonline.ru";
+   // private String gameSite = "www.thesettlersonline.ru";
+   // private String authPath = "http://w03bb01.thesettlersonline.ru/authenticate";
+   // private String mainPage = "/ru/главная-страница";
+   // private String loginPath = "/ru//api/user/login?name=%s&password=%s&rememberUser=on";
+   // private String bindPathHttp = "http://w03chat01.thesettlersonline.ru/http-bind/";
+   // private String bindPath = "w03chat01.thesettlersonline.ru/http-bind/";
 
     protected Session session;
     protected ArrayBlockingQueue<SentMessage> messages = new ArrayBlockingQueue<>(10);
@@ -69,6 +70,7 @@ public class Connection {
      */
     public Connection(String email, String password) {
         this.session = new Session(email, password);
+        handler = RegionalDataHandler.getHandler(Region.RUSSIA);
     }
 
     /**
@@ -136,7 +138,8 @@ public class Connection {
      * @return map of pairs <i>String nickname : String status</i>. Status is either "online" or "offline"
      */
     public Map<String, String> getFriendsAndStatusFromServer() {
-        String path = bindPathHttp;
+       // String path = bindPathHttp;
+        String path = handler.getBindPathHttp("3");
         String body = xmlHelper.prepareGetFriendsBody(session.sid, session.nextRid());
         String response = helper(path, body);
         List<String> friends = xmlHelper.extractFriendsFromResponse(response);
@@ -166,7 +169,8 @@ public class Connection {
      * @return up to 15 messages of history from the channel
      */
     public List<ChatMessage> bindChat(String chatName) {
-        String path = bindPathHttp;
+       // String path = bindPathHttp;
+        String path = handler.getBindPathHttp("3");
         String body = xmlHelper.prepareBindChatBody(session.sid, session.nextRid(), chatName, session.name);
         helper(path, body);
 
@@ -180,7 +184,8 @@ public class Connection {
      * @return a message from chat. This can be text message or a status change of a friend.
      */
     public ChatMessage chatLoop() {
-        String path = bindPathHttp;
+       // String path = bindPathHttp;
+        String path = handler.getBindPathHttp("3");
         while (true) {
             String response = "";
             try {
@@ -220,7 +225,8 @@ public class Connection {
     }
 
     protected void login() {
-        String path = String.format(gameSiteHttps + loginPath, session.email, session.password);
+       // String path = String.format(gameSiteHttps + loginPath, session.email, session.password);
+        String path = String.format(handler.getLoginPath(), session.email, session.password);
         HttpPost httpPost = new HttpPost(path);
         CloseableHttpResponse response = doPost(httpPost);
         try {
@@ -253,7 +259,8 @@ public class Connection {
     }
 
     protected void checkIn() {
-        String path = gameSiteHttps + mainPage;
+       // String path = gameSiteHttps + mainPage;
+        String path = handler.getMainPage();
         HttpGet httpGet = new HttpGet(path);
         CloseableHttpResponse response = doGet(httpGet);
         Header[] cookies = response.getHeaders("Set-Cookie");
@@ -271,7 +278,8 @@ public class Connection {
     }
 
     protected String receiveAuthHash() {
-        String path = authPath;
+       // String path = authPath;
+        String path = handler.getAuthPath("3");
         HttpPost httpPost = new HttpPost(path);
         String authText = String.format("DSOAUTHTOKEN=%s&DSOAUTHUSER=%s", session.authToken, session.userId);
         HttpEntity entity = new StringEntity(authText, ContentType.TEXT_HTML);
@@ -299,7 +307,8 @@ public class Connection {
     }
 
     protected void bind() {
-        String path = bindPathHttp;
+       // String path = bindPathHttp;
+        String path = handler.getBindPathHttp("3");
         HttpPost httpPost = new HttpPost(path);
         String body = xmlHelper.prepareFirstBindBody(session.nextRid());
         HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
@@ -315,7 +324,8 @@ public class Connection {
     }
 
     protected void bind2() {
-        String path = bindPathHttp;
+        //String path = bindPathHttp;
+        String path = handler.getBindPathHttp("3");
         HttpPost httpPost = new HttpPost(path);
         String authToken = session.name + "@null\0" + session.name + "\0" + session.authToken + "\0null";
         String base64Token = Base64.getEncoder().encodeToString(authToken.getBytes());
@@ -327,7 +337,8 @@ public class Connection {
     }
 
     protected void bind3() {
-        String path = bindPathHttp;
+       // String path = bindPathHttp;
+        String path = handler.getBindPathHttp("3");
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\"" + session.nextRid()
                 + "\" xmpp:restart=\"true\" xmlns=\"http://jabber.org/protocol/httpbind\" " +
@@ -339,7 +350,8 @@ public class Connection {
     }
 
     protected void bind4() {
-        String path = bindPathHttp;
+       // String path = bindPathHttp;
+        String path = handler.getBindPathHttp("3");
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\""+session.nextRid()+"\" " +
                 "xmlns=\"http://jabber.org/protocol/httpbind\"><iq type=\"set\" " +
@@ -352,7 +364,8 @@ public class Connection {
     }
 
     protected void bind5() {
-        String path = bindPathHttp;
+       // String path = bindPathHttp;
+        String path = handler.getBindPathHttp("3");
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\""+session.nextRid()+"\" " +
                 "xmlns=\"http://jabber.org/protocol/httpbind\"><iq type=\"set\" " +
@@ -411,7 +424,7 @@ public class Connection {
             return String.format("<body rid=\"%d\" xmlns:xmpp=\"urn:xmpp:xbosh\" " +
                     "xmlns=\"http://jabber.org/protocol/httpbind\" " +
                     "secure=\"false\" wait=\"20\" hold=\"1\" xml:lang=\"en\" " +
-                    "xmpp:version=\"1.0\" to=\""+ bindPath +"\" ver=\"1.6\" />", rid);
+                    "xmpp:version=\"1.0\" to=\""+ handler.getBindPath("3") +"\" ver=\"1.6\" />", rid);
         }
 
         private String prepareAuthBody(String sid, int rid, String authToken) {
@@ -445,7 +458,7 @@ public class Connection {
         private String prepareBindChatBody(String sid, int rid, String chat, String name) {
             return String.format("<body sid=\"%s\" rid=\"%d\" xmlns=\"http://jabber.org/protocol/httpbind\">" +
                     "<presence to=\"%s@conference.%s/%s\">" +
-                    "<priority>0</priority><x xmlns=\"http://jabber.org/protocol/muc\" /></presence></body>", sid, rid, chat, bindPath, name);
+                    "<priority>0</priority><x xmlns=\"http://jabber.org/protocol/muc\" /></presence></body>", sid, rid, chat, handler.getBindPath("3"), name);
         }
 
         private String prepareDummyBody(String sid, int rid) {
