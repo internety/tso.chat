@@ -52,6 +52,7 @@ public class Connection {
 
     private String gameSiteHttps = "https://www.thesettlersonline.ru";
     private String gameSite = "www.thesettlersonline.ru";
+    private String authPath = "http://w03bb01.thesettlersonline.ru/authenticate";
     private String mainPage = "/ru/главная-страница";
     private String loginPath = "/ru//api/user/login?name=%s&password=%s&rememberUser=on";
     private String bindPathHttp = "http://w03chat01.thesettlersonline.ru/http-bind/";
@@ -63,8 +64,8 @@ public class Connection {
     protected volatile HttpPost hPost;
 
     /**
-     * @param email the email used to log in to Uplay
-     * @param password the password of the Uplay account
+     * @param email  the email used to log in to Uplay
+     * @param password  the password of the Uplay account
      */
     public Connection(String email, String password) {
         this.session = new Session(email, password);
@@ -103,7 +104,7 @@ public class Connection {
      *     bindAll();
      * </code>
      *
-     * @param stage the object through which the stage of connection procedure can be communicated
+     * @param stage  the object through which the stage of connection procedure can be communicated
      * @return the name of the player which is resolved at the authorization step
      * @throws BadCredentialsException if the user entered incorrect email or password
      * @throws UplayDownException if the uplay server is down at the login step
@@ -161,7 +162,7 @@ public class Connection {
     /**
      * Binds a chat channel. Before you can use a chat channel you must bind it first. This method also returns
      * chat history: up to 15 messages from that channel.
-     * @param chatName the name of the chat channel
+     * @param chatName  the name of the chat channel
      * @return up to 15 messages of history from the channel
      */
     public List<ChatMessage> bindChat(String chatName) {
@@ -211,7 +212,7 @@ public class Connection {
 
     /**
      * Sends a message to chat.
-     * @param message message to be sent to chat.
+     * @param message  message to be sent to chat.
      */
     public void sendMessage(SentMessage message) {
         messages.add(message);
@@ -270,7 +271,7 @@ public class Connection {
     }
 
     protected String receiveAuthHash() {
-        String path = "http://w03bb01.thesettlersonline.ru/authenticate";
+        String path = authPath;
         HttpPost httpPost = new HttpPost(path);
         String authText = String.format("DSOAUTHTOKEN=%s&DSOAUTHUSER=%s", session.authToken, session.userId);
         HttpEntity entity = new StringEntity(authText, ContentType.TEXT_HTML);
