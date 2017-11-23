@@ -1,37 +1,30 @@
 package tso.chat;
 
 public enum Region {
-    ARGENTINA("Argentina"),
-    BRAZIL("Brazil"),
-    CHILE("Chile"),
-    COLOMBIA("Colombia"),
-    COSTA_RICA("Costa Rica"),
-    CZECH_REPUBLIC("Czech Republic"),
-    ECUADOR("Ecuador"),
-    EUROPE("Europe"),
-    FRANCE("France"),
-    GERMANY("Germany"),
-    GREECE("Greece"),
-    ITALY("Italy"),
-    LATIN_AMERICA("Latin America"),
-    MEXICO("Mexico"),
-    NETHERLANDS("Netherlands"),
-    PERU("Peru"),
-    POLAND("Poland"),
-    ROMANIA("Romania"),
-    RUSSIA("Russia"),
-    SPAIN("Spain"),
-    USA("USA"),
-    URUGUAY("Uruguay"),
-    VENEZUELA("Venezuela");
+    ARGENTINA,
+    BRAZIL,
+    CHILE,
+    COLOMBIA,
+    COSTA_RICA,
+    CZECH_REPUBLIC,
+    ECUADOR,
+    EUROPE,
+    FRANCE,
+    GERMANY,
+    GREECE,
+    ITALY,
+    LATIN_AMERICA,
+    MEXICO,
+    NETHERLANDS,
+    PERU,
+    POLAND,
+    ROMANIA,
+    RUSSIA,
+    SPAIN,
+    USA,
+    URUGUAY,
+    VENEZUELA,
+    TSOTESTING;
 
-    String value;
-    Region(String value) {
-        this.value=value;
-    };
 
-    @Override
-    public String toString() {
-        return value;
-    }
 }

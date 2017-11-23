@@ -5,8 +5,6 @@ import org.dom4j.DocumentException;
 import org.dom4j.Node;
 import org.dom4j.io.SAXReader;
 
-import java.io.File;
-import java.io.IOException;
 import java.io.InputStream;
 import java.util.HashMap;
 import java.util.List;
@@ -15,11 +13,13 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 public class RegionalDataHandler {
-    private static final String SITE = "thesettlersonline.";
+
     private static Map<Region, RegionalDataHandler> handlers = new ConcurrentHashMap<>();
 
     private final SAXReader xmlReader = new SAXReader();
+    private final String site;
     private final String domain;
+    private final String language;
     private final String mainPage;
     private final Map<String, Map<String, String>> realms = new HashMap<>();
 
@@ -38,13 +38,19 @@ public class RegionalDataHandler {
     }
 
     private RegionalDataHandler(Region region) {
+        if (region==Region.TSOTESTING) {
+            site="tsotesting.";
+        } else {
+            site="thesettlersonline.";
+        }
         try {
             ClassLoader classLoader = getClass().getClassLoader();
             InputStream is = classLoader.getResourceAsStream("regions.xml");
             Document document = xmlReader.read(is);
-            List<Node> nodes = document.selectNodes("/regions/region[@name = '"+region.toString()+"']");
+            List<Node> nodes = document.selectNodes("/regions/region[@name = '"+region.name()+"']");
             Node regionNode = nodes.get(0);
             domain = regionNode.selectSingleNode("domain").getText();
+            language = regionNode.selectSingleNode("language").getText();
             mainPage = regionNode.selectSingleNode("main_page").getText();
             Node realmsNode = regionNode.selectSingleNode("realms");
             List<Node> realmsList = realmsNode.selectNodes("realm");
@@ -63,7 +69,7 @@ public class RegionalDataHandler {
     }
 
     String getSite() {
-        return "www."+SITE+domain;
+        return "www."+ site +domain;
     }
 
     String getSiteHttps() {
@@ -71,23 +77,23 @@ public class RegionalDataHandler {
     }
 
     String getMainPage() {
-        return getSiteHttps()+"/"+domain+"/"+mainPage;
+        return getSiteHttps()+"/"+language+"/"+mainPage;
+    }
+
+    String getLoginPath() {
+        return getSiteHttps()+"/"+language+"//api/user/login?name=%s&password=%s&rememberUser=on";
     }
 
     String getAuthPath(String realmNo) {
         Map<String, String> servers = realms.get(realmNo);
         String bb = servers.get("bb");
-        return "http://"+bb+"."+SITE+domain+"/authenticate";
-    }
-
-    String getLoginPath() {
-        return getSiteHttps()+"/"+domain+"//api/user/login?name=%s&password=%s&rememberUser=on";
+        return "http://"+bb+"."+ site +domain+"/authenticate";
     }
 
     String getBindPath(String realmNo) {
         Map<String, String> servers = realms.get(realmNo);
         String chat = servers.get("chat");
-        return chat+"."+SITE+domain+"/http-bind/";
+        return chat+"."+ site +domain+"/http-bind/";
     }
 
     String getBindPathHttp(String realmNo) {
