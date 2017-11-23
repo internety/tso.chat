@@ -80,14 +80,14 @@ public class RegionalDataHandler {
         return getSiteHttps()+"/"+language+"/"+mainPage;
     }
 
+    String getLoginPath() {
+        return getSiteHttps()+"/"+language+"//api/user/login?name=%s&password=%s&rememberUser=on";
+    }
+
     String getAuthPath(String realmNo) {
         Map<String, String> servers = realms.get(realmNo);
         String bb = servers.get("bb");
         return "http://"+bb+"."+ site +domain+"/authenticate";
-    }
-
-    String getLoginPath() {
-        return getSiteHttps()+"/"+language+"//api/user/login?name=%s&password=%s&rememberUser=on";
     }
 
     String getBindPath(String realmNo) {
