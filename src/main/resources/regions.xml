@@ -3,6 +3,7 @@
 <regions>
     <region name="RUSSIA">
         <domain>ru</domain>
+        <language>ru</language>
         <main_page>главная-страница</main_page>
         <realms>
             <realm no="1">

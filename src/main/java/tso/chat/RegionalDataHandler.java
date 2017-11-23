@@ -19,6 +19,7 @@ public class RegionalDataHandler {
     private final SAXReader xmlReader = new SAXReader();
     private final String site;
     private final String domain;
+    private final String language;
     private final String mainPage;
     private final Map<String, Map<String, String>> realms = new HashMap<>();
 
@@ -49,6 +50,7 @@ public class RegionalDataHandler {
             List<Node> nodes = document.selectNodes("/regions/region[@name = '"+region.name()+"']");
             Node regionNode = nodes.get(0);
             domain = regionNode.selectSingleNode("domain").getText();
+            language = regionNode.selectSingleNode("language").getText();
             mainPage = regionNode.selectSingleNode("main_page").getText();
             Node realmsNode = regionNode.selectSingleNode("realms");
             List<Node> realmsList = realmsNode.selectNodes("realm");
@@ -75,7 +77,7 @@ public class RegionalDataHandler {
     }
 
     String getMainPage() {
-        return getSiteHttps()+"/"+domain+"/"+mainPage;
+        return getSiteHttps()+"/"+language+"/"+mainPage;
     }
 
     String getAuthPath(String realmNo) {
@@ -85,7 +87,7 @@ public class RegionalDataHandler {
     }
 
     String getLoginPath() {
-        return getSiteHttps()+"/"+domain+"//api/user/login?name=%s&password=%s&rememberUser=on";
+        return getSiteHttps()+"/"+language+"//api/user/login?name=%s&password=%s&rememberUser=on";
     }
 
     String getBindPath(String realmNo) {

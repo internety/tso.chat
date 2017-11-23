@@ -620,7 +620,7 @@ public class Connection {
     }
 
     private class Session {
-        String email, password, name, authToken, userId, sid;
+        private String email, password, name, authToken, userId, sid, realm;
         private AtomicInteger rid = new AtomicInteger(new Random().nextInt(1_000_000));
         int nextRid() {
             return rid.getAndIncrement();
