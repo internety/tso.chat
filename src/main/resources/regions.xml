@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 
 <regions>
-    <region name="Russia">
+    <region name="RUSSIA">
         <domain>ru</domain>
         <main_page>главная-страница</main_page>
         <realms>
