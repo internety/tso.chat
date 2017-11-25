@@ -1,8 +1,6 @@
 package tso.chat;
 
-/**
- * Created by reax on 14.11.17.
- */
+
 public class SentMessage {
     private final String channel;
     private final String to;

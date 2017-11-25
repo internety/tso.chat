@@ -48,17 +48,6 @@ public class Connection {
     protected CloseableHttpClient httpclient = HttpClients.createDefault();
     private final RegionalDataHandler handler;
 
-    // Sites are hardcoded for now, because getting them from the server involves action-message format
-    // Two ways to deal with this are: hardcode all servers or add amf interaction
-
-   // private String gameSiteHttps = "https://www.thesettlersonline.ru";
-   // private String gameSite = "www.thesettlersonline.ru";
-   // private String authPath = "http://w03bb01.thesettlersonline.ru/authenticate";
-   // private String mainPage = "/ru/главная-страница";
-   // private String loginPath = "/ru//api/user/login?name=%s&password=%s&rememberUser=on";
-   // private String bindPathHttp = "http://w03chat01.thesettlersonline.ru/http-bind/";
-   // private String bindPath = "w03chat01.thesettlersonline.ru/http-bind/";
-
     protected Session session;
     protected ArrayBlockingQueue<SentMessage> messages = new ArrayBlockingQueue<>(10);
     protected XMLHelper xmlHelper = new XMLHelper();
@@ -68,63 +57,12 @@ public class Connection {
      * @param email  the email used to log in to Uplay
      * @param password  the password of the Uplay account
      */
-    public Connection(String email, String password) {
+    public Connection(String email, String password, Region region) {
         this.session = new Session(email, password);
-        handler = RegionalDataHandler.getHandler(Region.RUSSIA);
+        handler = RegionalDataHandler.getHandler(region);
     }
 
-    /**
-     * This is a convenience method to deal with all connection steps. It calls overridable methods in a predefined
-     * order:
-     * <code>
-     *     login();
-     *     checkIn();
-     *     receiveAuthHash();
-     *     bindAll();
-     * </code>
-     *
-     * @return the name of the player which is resolved at the authorization step
-     * @throws BadCredentialsException if the user entered incorrect email or password
-     * @throws UplayDownException if the uplay server is down at the login step
-     */
-    public String connect() {
-        login();
-        checkIn();
-        String name = receiveAuthHash();
-        bindAll();
-        return name;
-    }
 
-    /**
-     * This is a convenience method to deal with all connection steps. It allows you to track progress via the
-     * <i>stage</i> parameter.
-     * This method calls overridable methods in a predefined order:
-     * <code>
-     *     login();
-     *     checkIn();
-     *     receiveAuthHash();
-     *     bindAll();
-     * </code>
-     *
-     * @param stage  the object through which the stage of connection procedure can be communicated
-     * @return the name of the player which is resolved at the authorization step
-     * @throws BadCredentialsException if the user entered incorrect email or password
-     * @throws UplayDownException if the uplay server is down at the login step
-     */
-    public String connect(SimpleObjectProperty<Stage> stage) {
-        if (stage==null) {
-            stage = new SimpleObjectProperty<>();
-        }
-        stage.set(Stage.LOGIN);
-        login();
-        stage.set(Stage.CHECK_IN);
-        checkIn();
-        stage.set(Stage.AUTH);
-        String name = receiveAuthHash();
-        stage.set(Stage.BIND);
-        bindAll();
-        return name;
-    }
 
     //TODO implement the restart procedure, hopefully without repeated login (no need to store password then)
     public void restart() {
@@ -137,8 +75,7 @@ public class Connection {
      * the names in lower case.
      * @return map of pairs <i>String nickname : String status</i>. Status is either "online" or "offline"
      */
-    public Map<String, String> getFriendsAndStatusFromServer() {
-       // String path = bindPathHttp;
+    public Map<String, Status> getFriendsAndStatusFromServer() {
         String path = handler.getBindPathHttp("3");
         String body = xmlHelper.prepareGetFriendsBody(session.sid, session.nextRid());
         String response = helper(path, body);
@@ -150,14 +87,14 @@ public class Connection {
         body = xmlHelper.prepareDummyBody(session.sid, session.nextRid());
         String statusBody = helper(path, body);
         List<String> onlineFriends = xmlHelper.whoIsOnline(statusBody);
-        Map<String, String> friendsWithStatus = new TreeMap<>();
+        Map<String, Status> friendsWithStatus = new TreeMap<>();
 
         for (String friend : friends) {
-            friendsWithStatus.put(friend, "offline");
+            friendsWithStatus.put(friend, Status.OFFLINE);
         }
 
         for (String onlineFriend : onlineFriends) {
-            friendsWithStatus.put(onlineFriend, "online");
+            friendsWithStatus.put(onlineFriend, Status.ONLINE);
         }
         return friendsWithStatus;
     }
@@ -169,7 +106,6 @@ public class Connection {
      * @return up to 15 messages of history from the channel
      */
     public List<ChatMessage> bindChat(String chatName) {
-       // String path = bindPathHttp;
         String path = handler.getBindPathHttp("3");
         String body = xmlHelper.prepareBindChatBody(session.sid, session.nextRid(), chatName, session.name);
         helper(path, body);
@@ -184,7 +120,6 @@ public class Connection {
      * @return a message from chat. This can be text message or a status change of a friend.
      */
     public ChatMessage chatLoop() {
-       // String path = bindPathHttp;
         String path = handler.getBindPathHttp("3");
         while (true) {
             String response = "";
@@ -224,8 +159,7 @@ public class Connection {
         hPost.abort();
     }
 
-    protected void login() {
-       // String path = String.format(gameSiteHttps + loginPath, session.email, session.password);
+    protected void login() throws BadCredentialsException, UplayDownException {
         String path = String.format(handler.getLoginPath(), session.email, session.password);
         HttpPost httpPost = new HttpPost(path);
         CloseableHttpResponse response = doPost(httpPost);
@@ -259,7 +193,6 @@ public class Connection {
     }
 
     protected void checkIn() {
-       // String path = gameSiteHttps + mainPage;
         String path = handler.getMainPage();
         HttpGet httpGet = new HttpGet(path);
         CloseableHttpResponse response = doGet(httpGet);
@@ -278,7 +211,6 @@ public class Connection {
     }
 
     protected String receiveAuthHash() {
-       // String path = authPath;
         String path = handler.getAuthPath("3");
         HttpPost httpPost = new HttpPost(path);
         String authText = String.format("DSOAUTHTOKEN=%s&DSOAUTHUSER=%s", session.authToken, session.userId);
@@ -307,7 +239,6 @@ public class Connection {
     }
 
     protected void bind() {
-       // String path = bindPathHttp;
         String path = handler.getBindPathHttp("3");
         HttpPost httpPost = new HttpPost(path);
         String body = xmlHelper.prepareFirstBindBody(session.nextRid());
@@ -324,7 +255,6 @@ public class Connection {
     }
 
     protected void bind2() {
-        //String path = bindPathHttp;
         String path = handler.getBindPathHttp("3");
         HttpPost httpPost = new HttpPost(path);
         String authToken = session.name + "@null\0" + session.name + "\0" + session.authToken + "\0null";
@@ -337,7 +267,6 @@ public class Connection {
     }
 
     protected void bind3() {
-       // String path = bindPathHttp;
         String path = handler.getBindPathHttp("3");
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\"" + session.nextRid()
@@ -350,7 +279,6 @@ public class Connection {
     }
 
     protected void bind4() {
-       // String path = bindPathHttp;
         String path = handler.getBindPathHttp("3");
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\""+session.nextRid()+"\" " +
@@ -364,7 +292,6 @@ public class Connection {
     }
 
     protected void bind5() {
-       // String path = bindPathHttp;
         String path = handler.getBindPathHttp("3");
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\""+session.nextRid()+"\" " +

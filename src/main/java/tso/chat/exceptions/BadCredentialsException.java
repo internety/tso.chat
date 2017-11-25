@@ -3,7 +3,7 @@ package tso.chat.exceptions;
 /**
  * Created by reax on 09.11.17.
  */
-public class BadCredentialsException extends RuntimeException {
+public class BadCredentialsException extends Exception {
     public BadCredentialsException() {
     }
 
