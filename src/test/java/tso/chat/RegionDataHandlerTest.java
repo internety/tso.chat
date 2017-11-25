@@ -57,6 +57,12 @@ class RegionDataHandlerTest {
     }
 
     @Test
+    void getChatPathTest() {
+        String chatPath = handler.getChatPath(REALM_NO);
+        assertEquals("w03chat01.thesettlersonline.ru", chatPath);
+    }
+
+    @Test
     void getBindPathHttpTest() {
         String bindPathHttp = handler.getBindPathHttp(REALM_NO);
         assertEquals("http://w03chat01.thesettlersonline.ru/http-bind/", bindPathHttp);

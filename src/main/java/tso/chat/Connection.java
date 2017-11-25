@@ -30,6 +30,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static org.apache.http.HttpStatus.SC_FORBIDDEN;
 import static org.apache.http.HttpStatus.SC_OK;
 
 /**
@@ -76,7 +77,7 @@ public class Connection {
      * @return map of pairs <i>String nickname : String status</i>. Status is either "online" or "offline"
      */
     public Map<String, Status> getFriendsAndStatusFromServer() {
-        String path = handler.getBindPathHttp("3");
+        String path = handler.getBindPathHttp(session.realm);
         String body = xmlHelper.prepareGetFriendsBody(session.sid, session.nextRid());
         String response = helper(path, body);
         List<String> friends = xmlHelper.extractFriendsFromResponse(response);
@@ -106,7 +107,7 @@ public class Connection {
      * @return up to 15 messages of history from the channel
      */
     public List<ChatMessage> bindChat(String chatName) {
-        String path = handler.getBindPathHttp("3");
+        String path = handler.getBindPathHttp(session.realm);
         String body = xmlHelper.prepareBindChatBody(session.sid, session.nextRid(), chatName, session.name);
         helper(path, body);
 
@@ -120,7 +121,7 @@ public class Connection {
      * @return a message from chat. This can be text message or a status change of a friend.
      */
     public ChatMessage chatLoop() {
-        String path = handler.getBindPathHttp("3");
+        String path = handler.getBindPathHttp(session.realm);
         while (true) {
             String response = "";
             try {
@@ -211,21 +212,33 @@ public class Connection {
     }
 
     protected String receiveAuthHash() {
-        String path = handler.getAuthPath("3");
-        HttpPost httpPost = new HttpPost(path);
-        String authText = String.format("DSOAUTHTOKEN=%s&DSOAUTHUSER=%s", session.authToken, session.userId);
-        HttpEntity entity = new StringEntity(authText, ContentType.TEXT_HTML);
-        httpPost.setEntity(entity);
-        CloseableHttpResponse response = doPost(httpPost);
-        try {
-            String responseBody = EntityUtils.toString(response.getEntity(), "UTF-8");
-            String[] tokens = responseBody.split("\\|");
-            session.name =tokens[1];
-            session.authToken=tokens[2];
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        // asking game server for URLs involves amf exchange, so it's easier just to bruteforce all realms
+        Set<String> realms = handler.getRealms();
+        for (String realm : realms) {
+            String path = handler.getAuthPath(realm);
+            HttpPost httpPost = new HttpPost(path);
+            String authText = String.format("DSOAUTHTOKEN=%s&DSOAUTHUSER=%s", session.authToken, session.userId);
+            HttpEntity entity = new StringEntity(authText, ContentType.TEXT_HTML);
+            httpPost.setEntity(entity);
+            CloseableHttpResponse response = doPost(httpPost);
+            if (response.getStatusLine().getStatusCode()==SC_FORBIDDEN) {
+                close(response);
+                continue;
+            }
+            try {
+                String responseBody = EntityUtils.toString(response.getEntity(), "UTF-8");
+                String[] tokens = responseBody.split("\\|");
+                session.name =tokens[1];
+                session.authToken=tokens[2];
+                session.realm=realm;
+                break;
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            } finally {
+                close(response);
+            }
         }
-        close(response);
+
         return session.name;
     }
 
@@ -235,11 +248,11 @@ public class Connection {
         bind3();
         bind4();
         // it looks like bind5() is not needed
-     // bind5();
+        // bind5();
     }
 
     protected void bind() {
-        String path = handler.getBindPathHttp("3");
+        String path = handler.getBindPathHttp(session.realm);
         HttpPost httpPost = new HttpPost(path);
         String body = xmlHelper.prepareFirstBindBody(session.nextRid());
         HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
@@ -255,7 +268,7 @@ public class Connection {
     }
 
     protected void bind2() {
-        String path = handler.getBindPathHttp("3");
+        String path = handler.getBindPathHttp(session.realm);
         HttpPost httpPost = new HttpPost(path);
         String authToken = session.name + "@null\0" + session.name + "\0" + session.authToken + "\0null";
         String base64Token = Base64.getEncoder().encodeToString(authToken.getBytes());
@@ -267,11 +280,11 @@ public class Connection {
     }
 
     protected void bind3() {
-        String path = handler.getBindPathHttp("3");
+        String path = handler.getBindPathHttp(session.realm);
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\"" + session.nextRid()
                 + "\" xmpp:restart=\"true\" xmlns=\"http://jabber.org/protocol/httpbind\" " +
-                "xml:lang=\"en\" to=\"w03chat01.thesettlersonline.ru\" xmlns:xmpp=\"urn:xmpp:xbosh\" />";
+                "xml:lang=\"en\" to=\""+handler.getChatPath(session.realm)+"\" xmlns:xmpp=\"urn:xmpp:xbosh\" />";
         HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
         httpPost.setEntity(entity);
         CloseableHttpResponse response = doPost(httpPost);
@@ -279,7 +292,7 @@ public class Connection {
     }
 
     protected void bind4() {
-        String path = handler.getBindPathHttp("3");
+        String path = handler.getBindPathHttp(session.realm);
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\""+session.nextRid()+"\" " +
                 "xmlns=\"http://jabber.org/protocol/httpbind\"><iq type=\"set\" " +
@@ -292,7 +305,7 @@ public class Connection {
     }
 
     protected void bind5() {
-        String path = handler.getBindPathHttp("3");
+        String path = handler.getBindPathHttp(session.realm);
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\""+session.nextRid()+"\" " +
                 "xmlns=\"http://jabber.org/protocol/httpbind\"><iq type=\"set\" " +
@@ -351,7 +364,7 @@ public class Connection {
             return String.format("<body rid=\"%d\" xmlns:xmpp=\"urn:xmpp:xbosh\" " +
                     "xmlns=\"http://jabber.org/protocol/httpbind\" " +
                     "secure=\"false\" wait=\"20\" hold=\"1\" xml:lang=\"en\" " +
-                    "xmpp:version=\"1.0\" to=\""+ handler.getBindPath("3") +"\" ver=\"1.6\" />", rid);
+                    "xmpp:version=\"1.0\" to=\""+ handler.getBindPath(session.realm) +"\" ver=\"1.6\" />", rid);
         }
 
         private String prepareAuthBody(String sid, int rid, String authToken) {
@@ -368,14 +381,14 @@ public class Connection {
             String body;
             if (message.getChannel().equals("private")) {
                 body = "<body rid=\""+session.nextRid()+"\" xmlns=\"http://jabber.org/protocol/httpbind\" " +
-                        "sid=\""+session.sid+"\"><message to=\""+message.getTo()+"@w03chat01.thesettlersonline.ru\" " +
-                        "id=\"m_100\" from=\""+session.name+"@w03chat01.thesettlersonline.ru\"><body>"+message.getText()+"</body>" +
+                        "sid=\""+session.sid+"\"><message to=\""+message.getTo()+"@"+handler.getChatPath(session.realm)+"\" " +
+                        "id=\"m_100\" from=\""+session.name+"@"+handler.getChatPath(session.realm)+"\"><body>"+message.getText()+"</body>" +
                         "<bbmsg playerid=\""+session.userId+"\" playertag=\""+"null"+"\" playername=\""+session.name+"\" xmlns=\"bbmsg\" />" +
                         "</message></body>";
             } else {
                 body = "<body rid=\""+session.nextRid()+"\" xmlns=\"http://jabber.org/protocol/httpbind\" sid=\""+session.sid+"\">" +
-                        "<message to=\""+message.getChannel()+"@conference.w03chat01.thesettlersonline.ru\" id=\"m_73\" " +
-                        "from=\""+session.name+"@w03chat01.thesettlersonline.ru\" type=\"groupchat\"><body>.</body>" +
+                        "<message to=\""+message.getChannel()+"@conference."+handler.getChatPath(session.realm)+"\" id=\"m_73\" " +
+                        "from=\""+session.name+"@"+handler.getChatPath(session.realm)+"\" type=\"groupchat\"><body>.</body>" +
                         "<bbmsg playerid=\""+session.userId+"\" playertag=\""+"null"+"\" playername=\""+session.name+"\" " +
                         "xmlns=\"bbmsg\" /></message></body>";
             }
@@ -385,7 +398,7 @@ public class Connection {
         private String prepareBindChatBody(String sid, int rid, String chat, String name) {
             return String.format("<body sid=\"%s\" rid=\"%d\" xmlns=\"http://jabber.org/protocol/httpbind\">" +
                     "<presence to=\"%s@conference.%s/%s\">" +
-                    "<priority>0</priority><x xmlns=\"http://jabber.org/protocol/muc\" /></presence></body>", sid, rid, chat, handler.getBindPath("3"), name);
+                    "<priority>0</priority><x xmlns=\"http://jabber.org/protocol/muc\" /></presence></body>", sid, rid, chat, handler.getBindPath(session.realm), name);
         }
 
         private String prepareDummyBody(String sid, int rid) {
@@ -486,25 +499,30 @@ public class Connection {
         }
 
         private List<String> extractFriendsFromResponse(String response) {
-            List<String> friends = new ArrayList<>();
-            String cleanResponse = destroyNamespaces(response);
-            Document document = null;
             try {
-                document = xmlReader.read(new StringReader(cleanResponse));
-            } catch (Exception e) {
-                // we all love checked exceptions!
-            }
-            Node iq = document.getRootElement().selectSingleNode("iq");
-            Node query = iq.selectSingleNode("query");
-            List<Node> nodes = query.selectNodes("item");
+                List<String> friends = new ArrayList<>();
+                String cleanResponse = destroyNamespaces(response);
+                Document document = null;
+                try {
+                    document = xmlReader.read(new StringReader(cleanResponse));
+                } catch (Exception e) {
+                    // we all love checked exceptions!
+                }
+                Node iq = document.getRootElement().selectSingleNode("iq");
+                Node query = iq.selectSingleNode("query");
+                List<Node> nodes = query.selectNodes("item");
 
-            for (Node node : nodes) {
-                String name = node.valueOf("@jid");
-                name = name.split("@")[0];
-                friends.add(name);
-            }
+                for (Node node : nodes) {
+                    String name = node.valueOf("@jid");
+                    name = name.split("@")[0];
+                    friends.add(name);
+                }
 
-            return friends;
+                return friends;
+            } catch (NullPointerException e) {
+                System.out.println(response);
+                throw new RuntimeException(e);
+            }
         }
 
         private List<String> whoIsOnline(String response) {

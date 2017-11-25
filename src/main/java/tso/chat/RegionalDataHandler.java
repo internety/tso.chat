@@ -96,6 +96,12 @@ public class RegionalDataHandler {
         return chat+"."+ site +domain+"/http-bind/";
     }
 
+    String getChatPath(String realmNo) {
+        Map<String, String> servers = realms.get(realmNo);
+        String chat = servers.get("chat");
+        return chat+"."+ site +domain;
+    }
+
     String getBindPathHttp(String realmNo) {
         return "http://"+getBindPath(realmNo);
     }

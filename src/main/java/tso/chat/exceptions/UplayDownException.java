@@ -4,6 +4,7 @@ package tso.chat.exceptions;
  * Created by reax on 09.11.17.
  */
 public class UplayDownException extends Exception {
+
     public UplayDownException() {
     }
 
