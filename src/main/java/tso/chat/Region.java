@@ -1,5 +1,10 @@
 package tso.chat;
 
+/**
+ * A Region represents a server or a group of servers under a single domain.
+ * For example, all servers under www.thesettlersonline.com belong to EUROPE region.
+ */
+
 public enum Region {
     ARGENTINA,
     BRAZIL,
@@ -25,6 +30,5 @@ public enum Region {
     URUGUAY,
     VENEZUELA,
     TSOTESTING;
-
 
 }

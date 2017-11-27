@@ -12,20 +12,15 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-public class RegionalDataHandler {
+class RegionalDataHandler {
 
     private static Map<Region, RegionalDataHandler> handlers = new ConcurrentHashMap<>();
 
-    private final SAXReader xmlReader = new SAXReader();
     private final String site;
     private final String domain;
     private final String language;
     private final String mainPage;
     private final Map<String, Map<String, String>> realms = new HashMap<>();
-
-    Set<String> getRealms() {
-        return realms.keySet();
-    }
 
     static RegionalDataHandler getHandler(Region region) {
         if (handlers.containsKey(region)) {
@@ -46,6 +41,7 @@ public class RegionalDataHandler {
         try {
             ClassLoader classLoader = getClass().getClassLoader();
             InputStream is = classLoader.getResourceAsStream("regions.xml");
+            SAXReader xmlReader = new SAXReader();
             Document document = xmlReader.read(is);
             List<Node> nodes = document.selectNodes("/regions/region[@name = '"+region.name()+"']");
             Node regionNode = nodes.get(0);
@@ -66,6 +62,10 @@ public class RegionalDataHandler {
         } catch (DocumentException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    Set<String> getRealms() {
+        return realms.keySet();
     }
 
     String getSite() {
@@ -105,6 +105,5 @@ public class RegionalDataHandler {
     String getBindPathHttp(String realmNo) {
         return "http://"+getBindPath(realmNo);
     }
-
 
 }

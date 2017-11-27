@@ -1,7 +1,7 @@
 package tso.chat.exceptions;
 
 /**
- * Created by reax on 09.11.17.
+ * Thrown when the Uplay server is reported to be down.
  */
 public class UplayDownException extends Exception {
 

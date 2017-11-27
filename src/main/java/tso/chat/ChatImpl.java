@@ -14,12 +14,6 @@ public class ChatImpl implements Chat {
         connection = new Connection(email, password, region);
     }
 
-    /**
-     *
-     * @return the name of the player which is resolved at the authorization step
-     * @throws BadCredentialsException if the user entered incorrect email or password
-     * @throws UplayDownException if the uplay server is down at the login step
-     */
     @Override
     public String connect() throws BadCredentialsException, UplayDownException {
         connection.login();

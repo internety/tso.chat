@@ -1,7 +1,7 @@
 package tso.chat.exceptions;
 
 /**
- * Created by reax on 09.11.17.
+ * Thrown when trying to login with invalid email or password.
  */
 public class BadCredentialsException extends Exception {
 

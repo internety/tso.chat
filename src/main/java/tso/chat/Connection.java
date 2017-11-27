@@ -1,6 +1,5 @@
 package tso.chat;
 
-import javafx.beans.property.SimpleObjectProperty;
 import org.apache.http.Header;
 import org.apache.http.HeaderElement;
 import org.apache.http.HttpEntity;
@@ -35,8 +34,8 @@ import static org.apache.http.HttpStatus.SC_OK;
 
 /**
  * This class provides chat connection and message exchange services.
- * Most of the connection methods are not part of the API. Protected methods perform different connection steps and
- * public methods call them in a predefined order.If you want to implement your own connection procedure then subclass.
+ * As the default connection procedure is handled by {@link Chat} implementations, you should not use this class directly
+ * unless you are not satisfied with the default process or want to add functionality.
  *
  * <p>
  * Each user needs their own instance of Connection because they need a separate set of cookies
@@ -47,12 +46,22 @@ public class Connection {
 
     // one client per class to handle separate cookies
     protected CloseableHttpClient httpclient = HttpClients.createDefault();
-    private final RegionalDataHandler handler;
 
-    protected Session session;
-    protected ArrayBlockingQueue<SentMessage> messages = new ArrayBlockingQueue<>(10);
+    // generates URLs based on the region and realm
+    protected RegionalDataHandler handler;
+
+    // generates ugly XML stuff
     protected XMLHelper xmlHelper = new XMLHelper();
+
+    // here the current session data is stored
+    protected Session session;
+
+    // used from other threads to interrupt current chat loop iteration,
+    // so the new iteration would pick up a message to send
     protected volatile HttpPost hPost;
+
+    // new messages are stored here until the chat loop picks them up and sends them
+    protected ArrayBlockingQueue<SentMessage> messages = new ArrayBlockingQueue<>(10);
 
     /**
      * @param email  the email used to log in to Uplay
@@ -160,7 +169,7 @@ public class Connection {
         hPost.abort();
     }
 
-    protected void login() throws BadCredentialsException, UplayDownException {
+    public void login() throws BadCredentialsException, UplayDownException {
         String path = String.format(handler.getLoginPath(), session.email, session.password);
         HttpPost httpPost = new HttpPost(path);
         CloseableHttpResponse response = doPost(httpPost);
@@ -193,7 +202,7 @@ public class Connection {
         }
     }
 
-    protected void checkIn() {
+    public void checkIn() {
         String path = handler.getMainPage();
         HttpGet httpGet = new HttpGet(path);
         CloseableHttpResponse response = doGet(httpGet);
@@ -211,7 +220,7 @@ public class Connection {
         close(response);
     }
 
-    protected String receiveAuthHash() {
+    public String receiveAuthHash() {
         // asking game server for URLs involves amf exchange, so it's easier just to bruteforce all realms
         Set<String> realms = handler.getRealms();
         for (String realm : realms) {
@@ -242,7 +251,7 @@ public class Connection {
         return session.name;
     }
 
-    protected void bindAll() {
+    public void bindAll() {
         bind();
         bind2();
         bind3();
@@ -251,7 +260,7 @@ public class Connection {
         // bind5();
     }
 
-    protected void bind() {
+    public void bind() {
         String path = handler.getBindPathHttp(session.realm);
         HttpPost httpPost = new HttpPost(path);
         String body = xmlHelper.prepareFirstBindBody(session.nextRid());
@@ -267,7 +276,7 @@ public class Connection {
         close(response);
     }
 
-    protected void bind2() {
+    public void bind2() {
         String path = handler.getBindPathHttp(session.realm);
         HttpPost httpPost = new HttpPost(path);
         String authToken = session.name + "@null\0" + session.name + "\0" + session.authToken + "\0null";
@@ -279,7 +288,7 @@ public class Connection {
         close(response);
     }
 
-    protected void bind3() {
+    public void bind3() {
         String path = handler.getBindPathHttp(session.realm);
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\"" + session.nextRid()
@@ -291,7 +300,7 @@ public class Connection {
         close(response);
     }
 
-    protected void bind4() {
+    public void bind4() {
         String path = handler.getBindPathHttp(session.realm);
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\""+session.nextRid()+"\" " +
@@ -304,7 +313,7 @@ public class Connection {
         close(response);
     }
 
-    protected void bind5() {
+    public void bind5() {
         String path = handler.getBindPathHttp(session.realm);
         HttpPost httpPost = new HttpPost(path);
         String body = "<body sid=\""+session.sid+"\" rid=\""+session.nextRid()+"\" " +
@@ -350,7 +359,7 @@ public class Connection {
         }
     }
 
-    private class XMLHelper {
+    protected class XMLHelper {
         private final SAXReader xmlReader = new SAXReader();
 
         private String extractSid(String body) {
