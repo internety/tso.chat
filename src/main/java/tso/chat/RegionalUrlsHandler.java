@@ -12,9 +12,9 @@ import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-class RegionalDataHandler {
+class RegionalUrlsHandler {
 
-    private static Map<Region, RegionalDataHandler> handlers = new ConcurrentHashMap<>();
+    private static Map<Region, RegionalUrlsHandler> handlers = new ConcurrentHashMap<>();
 
     private final String site;
     private final String domain;
@@ -22,17 +22,17 @@ class RegionalDataHandler {
     private final String mainPage;
     private final Map<String, Map<String, String>> realms = new HashMap<>();
 
-    static RegionalDataHandler getHandler(Region region) {
+    static RegionalUrlsHandler getHandler(Region region) {
         if (handlers.containsKey(region)) {
             return handlers.get(region);
         } else {
-            RegionalDataHandler handler = new RegionalDataHandler(region);
+            RegionalUrlsHandler handler = new RegionalUrlsHandler(region);
             handlers.put(region, handler);
             return handler;
         }
     }
 
-    private RegionalDataHandler(Region region) {
+    private RegionalUrlsHandler(Region region) {
         if (region==Region.TSOTESTING) {
             site="tsotesting.";
         } else {

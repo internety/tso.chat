@@ -11,12 +11,12 @@ import static tso.chat.Region.RUSSIA;
 
 class RegionDataHandlerTest {
 
-    private static RegionalDataHandler handler;
+    private static RegionalUrlsHandler handler;
     private static final String REALM_NO = "3";
 
     @BeforeAll
-    static void setup() {
-        handler = RegionalDataHandler.getHandler(RUSSIA);
+    static void setUp() {
+        handler = RegionalUrlsHandler.getHandler(RUSSIA);
     }
 
     @Test

@@ -5,5 +5,5 @@ package tso.chat;
  * A player can be either online or offline.
  */
 public enum Status {
-    ONLINE, OFFLINE;
+    ONLINE, OFFLINE
 }

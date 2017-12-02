@@ -48,7 +48,7 @@ public class Connection {
     protected CloseableHttpClient httpclient = HttpClients.createDefault();
 
     // generates URLs based on the region and realm
-    protected RegionalDataHandler handler;
+    protected RegionalUrlsHandler urlHandler;
 
     // generates ugly XML stuff
     protected XMLHelper xmlHelper = new XMLHelper();
@@ -69,10 +69,8 @@ public class Connection {
      */
     public Connection(String email, String password, Region region) {
         this.session = new Session(email, password);
-        handler = RegionalDataHandler.getHandler(region);
+        urlHandler = RegionalUrlsHandler.getHandler(region);
     }
-
-
 
     //TODO implement the restart procedure, hopefully without repeated login (no need to store password then)
     public void restart() {
@@ -86,16 +84,17 @@ public class Connection {
      * @return map of pairs <i>String nickname : String status</i>. Status is either "online" or "offline"
      */
     public Map<String, Status> getFriendsAndStatusFromServer() {
-        String path = handler.getBindPathHttp(session.realm);
+        String path = urlHandler.getBindPathHttp(session.realm);
         String body = xmlHelper.prepareGetFriendsBody(session.sid, session.nextRid());
-        String response = helper(path, body);
-        List<String> friends = xmlHelper.extractFriendsFromResponse(response);
+        ResponseContent content = doPost(path, body);
+        List<String> friends = xmlHelper.extractFriendsFromResponse(content.body);
 
         body = xmlHelper.prepareDummyBody(session.sid, session.nextRid());
-        helper(path, body);
+        doPost(path, body);
 
         body = xmlHelper.prepareDummyBody(session.sid, session.nextRid());
-        String statusBody = helper(path, body);
+        content = doPost(path, body);
+        String statusBody = content.body;
         List<String> onlineFriends = xmlHelper.whoIsOnline(statusBody);
         Map<String, Status> friendsWithStatus = new TreeMap<>();
 
@@ -116,12 +115,13 @@ public class Connection {
      * @return up to 15 messages of history from the channel
      */
     public List<ChatMessage> bindChat(String chatName) {
-        String path = handler.getBindPathHttp(session.realm);
+        String path = urlHandler.getBindPathHttp(session.realm);
         String body = xmlHelper.prepareBindChatBody(session.sid, session.nextRid(), chatName, session.name);
-        helper(path, body);
+        doPost(path, body);
 
         body = xmlHelper.prepareDummyBody(session.sid, session.nextRid());
-        String history = helper(path, body);
+        ResponseContent content = doPost(path, body);
+        String history = content.body;
         return xmlHelper.extractHistory(history);
     }
 
@@ -130,7 +130,7 @@ public class Connection {
      * @return a message from chat. This can be text message or a status change of a friend.
      */
     public ChatMessage chatLoop() {
-        String path = handler.getBindPathHttp(session.realm);
+        String path = urlHandler.getBindPathHttp(session.realm);
         while (true) {
             String response = "";
             try {
@@ -156,6 +156,7 @@ public class Connection {
             } catch (Exception e) {
                 // not all responses are handled now, ignoring some of them helps to test other things
                 // print response body is ok here
+                e.printStackTrace();
             }
         }
     }
@@ -170,43 +171,26 @@ public class Connection {
     }
 
     public void login() throws BadCredentialsException, UplayDownException {
-        String path = String.format(handler.getLoginPath(), session.email, session.password);
-        HttpPost httpPost = new HttpPost(path);
-        CloseableHttpResponse response = doPost(httpPost);
-        try {
-            String responseBody = EntityUtils.toString(response.getEntity());
-            int status = response.getStatusLine().getStatusCode();
-            if (status != SC_OK) {
-                throw new RuntimeException("server didn't respond with HTTP/1.1 200 OK\n" +
-                        response.getStatusLine() + "\n" +
-                        responseBody);
-            }
-            if (responseBody.contains("UPLAYDOWN")) {
-                throw new UplayDownException();
-            } else if (responseBody.contains("FAILED")) {
-                System.out.println(response);
-                System.out.println(responseBody);
-                throw new BadCredentialsException();
-            }
-        } catch (IOException e) {
-            throw new RuntimeException("an IOException occurred", e);
+        String path = String.format(urlHandler.getLoginPath(), session.email, session.password);
+        ResponseContent content = doPost(path);
+        int status = content.statusCode;
+        if (status != SC_OK) {
+            throw new RuntimeException("server didn't respond with HTTP/1.1 200 OK\n" +
+                    content.statusCode + "\n" +
+                    content.body);
         }
-        close(response);
-    }
-
-    protected void close(CloseableHttpResponse response) {
-        try {
-            response.close();
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        if (content.body.contains("UPLAYDOWN")) {
+            throw new UplayDownException();
+        } else if (content.body.contains("FAILED")) {
+            System.out.println(content.body);
+            throw new BadCredentialsException();
         }
     }
 
     public void checkIn() {
-        String path = handler.getMainPage();
-        HttpGet httpGet = new HttpGet(path);
-        CloseableHttpResponse response = doGet(httpGet);
-        Header[] cookies = response.getHeaders("Set-Cookie");
+        String path = urlHandler.getMainPage();
+        ResponseContent content = doGet(path);
+        Header[] cookies = content.cookies;
         for (Header h : cookies) {
             for (HeaderElement el : h.getElements()) {
                 if (el.getName().equals("dsoAuthUser")) {
@@ -217,37 +201,24 @@ public class Connection {
                 }
             }
         }
-        close(response);
     }
 
     public String receiveAuthHash() {
         // asking game server for URLs involves amf exchange, so it's easier just to bruteforce all realms
-        Set<String> realms = handler.getRealms();
+        Set<String> realms = urlHandler.getRealms();
         for (String realm : realms) {
-            String path = handler.getAuthPath(realm);
-            HttpPost httpPost = new HttpPost(path);
+            String path = urlHandler.getAuthPath(realm);
             String authText = String.format("DSOAUTHTOKEN=%s&DSOAUTHUSER=%s", session.authToken, session.userId);
-            HttpEntity entity = new StringEntity(authText, ContentType.TEXT_HTML);
-            httpPost.setEntity(entity);
-            CloseableHttpResponse response = doPost(httpPost);
-            if (response.getStatusLine().getStatusCode()==SC_FORBIDDEN) {
-                close(response);
+            ResponseContent content = doPost(path, authText);
+            if (content.statusCode==SC_FORBIDDEN) {
                 continue;
             }
-            try {
-                String responseBody = EntityUtils.toString(response.getEntity(), "UTF-8");
-                String[] tokens = responseBody.split("\\|");
-                session.name =tokens[1];
-                session.authToken=tokens[2];
-                session.realm=realm;
-                break;
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            } finally {
-                close(response);
-            }
+            String[] tokens = content.body.split("\\|");
+            session.name =tokens[1];
+            session.authToken=tokens[2];
+            session.realm=realm;
+            break;
         }
-
         return session.name;
     }
 
@@ -261,68 +232,43 @@ public class Connection {
     }
 
     public void bind() {
-        String path = handler.getBindPathHttp(session.realm);
-        HttpPost httpPost = new HttpPost(path);
+        String path = urlHandler.getBindPathHttp(session.realm);
         String body = xmlHelper.prepareFirstBindBody(session.nextRid());
-        HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
-        httpPost.setEntity(entity);
-        CloseableHttpResponse response = doPost(httpPost);
-        try {
-            String result = EntityUtils.toString(response.getEntity());
-            session.sid= xmlHelper.extractSid(result);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        close(response);
+        ResponseContent content = doPost(path, body);
+        session.sid= xmlHelper.extractSid(content.body);
     }
 
     public void bind2() {
-        String path = handler.getBindPathHttp(session.realm);
-        HttpPost httpPost = new HttpPost(path);
+        String path = urlHandler.getBindPathHttp(session.realm);
         String authToken = session.name + "@null\0" + session.name + "\0" + session.authToken + "\0null";
         String base64Token = Base64.getEncoder().encodeToString(authToken.getBytes());
         String body = xmlHelper.prepareAuthBody(session.sid, session.nextRid(), base64Token);
-        HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
-        httpPost.setEntity(entity);
-        CloseableHttpResponse response = doPost(httpPost);
-        close(response);
+        doPost(path, body);
     }
 
     public void bind3() {
-        String path = handler.getBindPathHttp(session.realm);
-        HttpPost httpPost = new HttpPost(path);
+        String path = urlHandler.getBindPathHttp(session.realm);
         String body = "<body sid=\""+session.sid+"\" rid=\"" + session.nextRid()
                 + "\" xmpp:restart=\"true\" xmlns=\"http://jabber.org/protocol/httpbind\" " +
-                "xml:lang=\"en\" to=\""+handler.getChatPath(session.realm)+"\" xmlns:xmpp=\"urn:xmpp:xbosh\" />";
-        HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
-        httpPost.setEntity(entity);
-        CloseableHttpResponse response = doPost(httpPost);
-        close(response);
+                "xml:lang=\"en\" to=\""+ urlHandler.getChatPath(session.realm)+"\" xmlns:xmpp=\"urn:xmpp:xbosh\" />";
+        doPost(path, body);
     }
 
     public void bind4() {
-        String path = handler.getBindPathHttp(session.realm);
-        HttpPost httpPost = new HttpPost(path);
+        String path = urlHandler.getBindPathHttp(session.realm);
         String body = "<body sid=\""+session.sid+"\" rid=\""+session.nextRid()+"\" " +
                 "xmlns=\"http://jabber.org/protocol/httpbind\"><iq type=\"set\" " +
                 "id=\"iq_1\"><bind xmlns=\"urn:ietf:params:xml:ns:xmpp-bind\"><resource>xiff-bosh</resource>" +
                 "</bind></iq></body>";
-        HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
-        httpPost.setEntity(entity);
-        CloseableHttpResponse response = doPost(httpPost);
-        close(response);
+        doPost(path, body);
     }
 
     public void bind5() {
-        String path = handler.getBindPathHttp(session.realm);
-        HttpPost httpPost = new HttpPost(path);
+        String path = urlHandler.getBindPathHttp(session.realm);
         String body = "<body sid=\""+session.sid+"\" rid=\""+session.nextRid()+"\" " +
                 "xmlns=\"http://jabber.org/protocol/httpbind\"><iq type=\"set\" " +
                 "id=\"iq_3\"><session xmlns=\"urn:ietf:params:xml:ns:xmpp-session\" /></iq></body>";
-        HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
-        httpPost.setEntity(entity);
-        CloseableHttpResponse response = doPost(httpPost);
-        close(response);
+        doPost(path, body);
     }
 
     //TODO get rid of this helper method
@@ -341,20 +287,42 @@ public class Connection {
         return result;
     }
 
-    protected CloseableHttpResponse doGet(HttpGet httpGet) {
-        try {
-            CloseableHttpResponse response = httpclient.execute(httpGet);
-            return response;
+    private ResponseContent doGet(HttpGet httpGet) {
+        try (CloseableHttpResponse response = httpclient.execute(httpGet)) {
+            int code = response.getStatusLine().getStatusCode();
+            String body = EntityUtils.toString(response.getEntity(), "UTF-8");
+            Header[] cookies = response.getHeaders("Set-Cookie");
+            return new ResponseContent(code, body, cookies);
         } catch (Exception e) {
             throw new RuntimeException(e);
         }
     }
 
-    protected CloseableHttpResponse doPost(HttpPost httpPost) {
-        try {
-            CloseableHttpResponse response = httpclient.execute(httpPost);
-            return response;
-        } catch (Exception e) {
+    private ResponseContent doGet(String path) {
+        HttpGet httpGet = new HttpGet(path);
+        return doGet(httpGet);
+    }
+
+    private ResponseContent doPost(String path, String body) {
+        HttpPost httpPost = new HttpPost(path);
+        HttpEntity entity = new StringEntity(body, ContentType.TEXT_HTML);
+        httpPost.setEntity(entity);
+        return doPost(httpPost);
+    }
+
+    private ResponseContent doPost(String path) {
+        HttpPost httpPost = new HttpPost(path);
+        return doPost(httpPost);
+    }
+
+    private ResponseContent doPost(HttpPost httpPost) {
+        hPost = httpPost;
+        try (CloseableHttpResponse response = httpclient.execute(httpPost)) {
+            int code = response.getStatusLine().getStatusCode();
+            String body = EntityUtils.toString(response.getEntity(), "UTF-8");
+            Header[] cookies = response.getHeaders("Set-Cookie");
+            return new ResponseContent(code, body, cookies);
+        } catch (IOException e) {
             throw new RuntimeException(e);
         }
     }
@@ -373,7 +341,7 @@ public class Connection {
             return String.format("<body rid=\"%d\" xmlns:xmpp=\"urn:xmpp:xbosh\" " +
                     "xmlns=\"http://jabber.org/protocol/httpbind\" " +
                     "secure=\"false\" wait=\"20\" hold=\"1\" xml:lang=\"en\" " +
-                    "xmpp:version=\"1.0\" to=\""+ handler.getBindPath(session.realm) +"\" ver=\"1.6\" />", rid);
+                    "xmpp:version=\"1.0\" to=\""+ urlHandler.getBindPath(session.realm) +"\" ver=\"1.6\" />", rid);
         }
 
         private String prepareAuthBody(String sid, int rid, String authToken) {
@@ -390,14 +358,14 @@ public class Connection {
             String body;
             if (message.getChannel().equals("private")) {
                 body = "<body rid=\""+session.nextRid()+"\" xmlns=\"http://jabber.org/protocol/httpbind\" " +
-                        "sid=\""+session.sid+"\"><message to=\""+message.getTo()+"@"+handler.getChatPath(session.realm)+"\" " +
-                        "id=\"m_100\" from=\""+session.name+"@"+handler.getChatPath(session.realm)+"\"><body>"+message.getText()+"</body>" +
+                        "sid=\""+session.sid+"\"><message to=\""+message.getTo()+"@"+ urlHandler.getChatPath(session.realm)+"\" " +
+                        "id=\"m_100\" from=\""+session.name+"@"+ urlHandler.getChatPath(session.realm)+"\"><body>"+message.getText()+"</body>" +
                         "<bbmsg playerid=\""+session.userId+"\" playertag=\""+"null"+"\" playername=\""+session.name+"\" xmlns=\"bbmsg\" />" +
                         "</message></body>";
             } else {
                 body = "<body rid=\""+session.nextRid()+"\" xmlns=\"http://jabber.org/protocol/httpbind\" sid=\""+session.sid+"\">" +
-                        "<message to=\""+message.getChannel()+"@conference."+handler.getChatPath(session.realm)+"\" id=\"m_73\" " +
-                        "from=\""+session.name+"@"+handler.getChatPath(session.realm)+"\" type=\"groupchat\"><body>.</body>" +
+                        "<message to=\""+message.getChannel()+"@conference."+ urlHandler.getChatPath(session.realm)+"\" id=\"m_73\" " +
+                        "from=\""+session.name+"@"+ urlHandler.getChatPath(session.realm)+"\" type=\"groupchat\"><body>.</body>" +
                         "<bbmsg playerid=\""+session.userId+"\" playertag=\""+"null"+"\" playername=\""+session.name+"\" " +
                         "xmlns=\"bbmsg\" /></message></body>";
             }
@@ -407,7 +375,7 @@ public class Connection {
         private String prepareBindChatBody(String sid, int rid, String chat, String name) {
             return String.format("<body sid=\"%s\" rid=\"%d\" xmlns=\"http://jabber.org/protocol/httpbind\">" +
                     "<presence to=\"%s@conference.%s/%s\">" +
-                    "<priority>0</priority><x xmlns=\"http://jabber.org/protocol/muc\" /></presence></body>", sid, rid, chat, handler.getBindPath(session.realm), name);
+                    "<priority>0</priority><x xmlns=\"http://jabber.org/protocol/muc\" /></presence></body>", sid, rid, chat, urlHandler.getBindPath(session.realm), name);
         }
 
         private String prepareDummyBody(String sid, int rid) {
@@ -586,6 +554,16 @@ public class Connection {
         }
     }
 
+    private class ResponseContent {
+        private int statusCode;
+        private String body;
+        private Header[] cookies;
+        private ResponseContent(int statusCode, String body, Header[] cookies) {
+            this.statusCode = statusCode;
+            this.body       = body;
+            this.cookies    = cookies;
+        }
+    }
 }
 
 

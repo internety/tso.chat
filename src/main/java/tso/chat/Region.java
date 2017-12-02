@@ -29,6 +29,6 @@ public enum Region {
     USA,
     URUGUAY,
     VENEZUELA,
-    TSOTESTING;
+    TSOTESTING
 
 }
